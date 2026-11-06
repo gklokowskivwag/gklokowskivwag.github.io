@@ -6,7 +6,7 @@
 <title>Karteikarten: Enigma vs. Lorenz</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: light;
@@ -17,6 +17,7 @@
     --line: #cfd7dd;
     --geronimo: #1d5c6b;
     --angelo: #a0461c;
+    --accent: var(--geronimo);
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -68,7 +69,12 @@
     border-radius: 6px;
     border-top: 8px solid var(--accent);
     overflow: hidden;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
   }
+  .progress { height: 4px; background: var(--line); }
+  .progress span { display: block; height: 100%; background: var(--accent); width: 0; }
   .meta {
     display: flex;
     justify-content: space-between;
@@ -78,33 +84,49 @@
     color: var(--muted);
     font-size: 1rem;
   }
-  .speaker { color: var(--accent); font-weight: 700; font-size: 1.5rem; }
+  .speaker { color: var(--accent); font-weight: 700; font-size: 1.75rem; }
+  .slide-cue {
+    margin: 0.75rem 1.5rem 0;
+    padding: 0.4rem 0.75rem;
+    border-left: 4px solid var(--accent);
+    background: var(--bg);
+    font-weight: 700;
+    font-size: 1.125rem;
+  }
   h1 {
-    margin: 0.25rem 1.5rem 0;
-    font-size: calc(var(--size) * 0.7);
+    margin: 0.5rem 1.5rem 0;
+    color: var(--muted);
+    font-size: calc(var(--size) * 0.6);
     line-height: 1.2;
+    font-weight: 700;
   }
   .text {
     flex: 1;
     overflow-y: auto;
-    padding: 0.75rem 1.5rem 1.5rem;
+    padding: 1rem 1.5rem 1.5rem;
     font-size: var(--size);
-    line-height: 1.45;
+    line-height: 1.35;
   }
-  .text p { margin: 0 0 0.8em; max-width: 34em; }
+  .text p {
+    margin: 0;
+    max-width: 34em;
+    border-left: 6px solid var(--accent);
+    padding-left: 0.75rem;
+  }
   .next {
     border-top: 1px solid var(--line);
     padding: 0.75rem 1.5rem;
     color: var(--muted);
-    font-size: 1rem;
+    font-size: 1.125rem;
   }
   .controls {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
     padding-top: 0.75rem;
   }
-  button {
+  button, select {
     font: inherit;
     font-size: 1rem;
     color: var(--ink);
@@ -114,16 +136,17 @@
     padding: 0.6rem 1rem;
     cursor: pointer;
   }
-  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  select { max-width: 16rem; }
+  button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   button:disabled { opacity: 0.4; cursor: default; }
   .spacer { flex: 1; }
   .primary { background: var(--accent); color: var(--card); border-color: var(--accent); font-weight: 700; }
-  .line { border-left: 4px solid var(--who); padding-left: 0.75rem; }
-  .who { display: block; color: var(--who); font-weight: 700; font-size: 0.6em; }
-  .help { color: var(--muted); font-size: 0.875rem; padding-top: 0.5rem; text-align: center; }
+  .help { color: var(--muted); font-size: 0.875rem; padding-top: 0.5rem; text-align: center; margin: 0; }
+  [hidden] { display: none !important; }
   @media (max-width: 600px) {
     body { --size: 28px; }
     .app { padding: 0.5rem; }
+    .speaker { font-size: 1.375rem; }
     .help { display: none; }
   }
 </style>
@@ -131,208 +154,620 @@
 <body>
 <main class="app">
   <article class="card" id="card" aria-live="polite">
+    <div class="progress"><span id="bar"></span></div>
     <div class="meta">
       <span class="speaker" id="speaker"></span>
       <span id="position"></span>
     </div>
+    <p class="slide-cue" id="slideCue" hidden></p>
     <h1 id="title"></h1>
     <div class="text" id="text"></div>
     <div class="next" id="next"></div>
   </article>
   <div class="controls">
     <button id="prev" type="button">Zurück</button>
+    <select id="jump" aria-label="Zu einer Folie springen"></select>
     <button id="smaller" type="button" aria-label="Schrift kleiner">A−</button>
     <button id="bigger" type="button" aria-label="Schrift größer">A+</button>
+    <button id="fullscreen" type="button" hidden>Vollbild</button>
     <span class="spacer"></span>
     <button id="nextBtn" class="primary" type="button">Weiter</button>
   </div>
-  <p class="help">Enter, Leertaste oder → für weiter. ← oder Backspace für zurück. + und − ändern die Schriftgröße.</p>
+  <p class="help">Weiter mit Enter, Leertaste, Pfeil rechts, Presenter oder Klick auf die Karte. Zurück mit Pfeil links, Backspace oder Klick auf das linke Drittel der Karte. F schaltet Vollbild, + und − ändern die Schrift.</p>
 </main>
 
 <script>
 const cards = [
-  { slide: 1, title: "Enigma vs. Lorenz-Maschine", lines: [
-    ["G", "Hallo zusammen. Ich bin Geronimo,"],
-    ["A", "und ich bin Angelo. Heute geht es um Kryptologie im Zweiten Weltkrieg, genauer gesagt um zwei deutsche Verschlüsselungsmaschinen: die Enigma und die Lorenz-Maschine."],
-    ["G", "Beide erzeugen ihren Schlüssel mit Rädern, die sich drehen. Deshalb nennt man sie Rotorchiffren. Und beide wurden am Ende von den Briten geknackt."]
-  ]},
-  { slide: 2, title: "Gliederung", lines: [
-    ["G", "Kurz zur Aufteilung. Vorbereitet habe ich die Teile 1 bis 3, also den Einstieg, den historischen Kontext und die Technik."],
-    ["A", "Und ich Teil 4, die Kryptanalyse. Also die Schwachstellen, wie die Briten sie ausgenutzt haben und warum man dafür zwei komplett unterschiedliche Angriffe gebraucht hat."],
-    ["G", "Erzählen tun wir das Ganze aber zusammen. Also wundert euch nicht, wenn wir uns abwechseln."],
-    ["A", "Am Ende beantworten wir unsere Leitfrage, und dann haben wir noch eine Diskussionsfrage an euch."]
-  ]},
-  { slide: 3, title: "Zwei Maschinen, zwei Angriffe", lines: [
-    ["G", "Links seht ihr die Enigma, rechts die Lorenz SZ 42. Beide galten bei den Deutschen als unknackbar."],
-    ["A", "Und beide wurden trotzdem gebrochen. Spannend ist eigentlich, womit."],
-    ["G", "Gegen die Enigma haben die Briten die sogenannte Bombe gebaut. Das war eine elektromechanische Maschine, also elektrisch, aber noch mit Relais und Teilen, die sich mechanisch bewegen."],
-    ["A", "Gegen Lorenz haben sie Colossus gebaut. Und Colossus gilt als der erste elektronische Digitalrechner, also quasi ein Vorfahre von den Rechnern, mit denen wir heute arbeiten."],
-    ["G", "Zwei Maschinen, zwei völlig verschiedene Werkzeuge. Und das ist kein Zufall. Unsere Leitfrage lautet deshalb: Wie prägt die Konstruktion einer Maschine die Möglichkeiten ihrer Kryptanalyse?"],
-    ["A", "Kurz zu den Begriffen: Kryptologie ist der Oberbegriff. Kryptografie ist das Verschlüsseln, Kryptanalyse das Knacken, also an den Klartext kommen, ohne den Schlüssel zu kennen."],
-    ["G", "Wir wollen also rausfinden, ob schon das Design eines Verfahrens festlegt, mit welcher Art von Angriff man es brechen kann. Behaltet die Frage im Hinterkopf, am Ende kommen wir darauf zurück."]
-  ]},
-  { slide: 4, title: "2.1 Enigma: Funkverschlüsselung der Truppe", lines: [
-    ["G", "Fangen wir mit der Enigma an. Erfunden hat sie Arthur Scherbius, kurz nach dem Ersten Weltkrieg. Zwischen 1926 und 1935 haben die deutschen Streitkräfte sie übernommen."],
-    ["A", "Heer, Luftwaffe und Kriegsmarine hatten dabei Versionen mit Steckerbrett. Was das macht, sehen wir gleich bei der Technik."],
-    ["G", "Verschlüsselt wurden vor allem taktische Meldungen, also Nachrichten aus dem laufenden Kampfgeschehen. Und die gingen immer per Morsefunk raus."],
-    ["A", "Funk ist aber ein offener Kanal. Wer die Frequenz kennt, kann mithören. Der Gegner hat also jeden Geheimtext mitbekommen, und die ganze Sicherheit hing an der Verschlüsselung."],
-    ["G", "Hier seht ihr eine Enigma in einem Befehlsfahrzeug, Frankreich 1940. Das war echte Handarbeit: Einer tippt den Klartext Zeichen für Zeichen ein, einer schreibt mit, welche Lampe aufleuchtet, und ein Funker morst das Ergebnis."],
-    ["A", "Damit der Empfänger entschlüsseln kann, braucht er denselben Schlüssel, also dieselbe Einstellung. Das ist ein symmetrisches Verfahren, so wie heute AES auch. Und dieser Schlüssel wurde meistens alle 24 Stunden gewechselt."]
-  ]},
-  { slide: 5, title: "2.2 Lorenz SZ 40/42: Fernschreiben der obersten Führung", lines: [
-    ["A", "Die Lorenz-Maschine ist eine ganz andere Liga. Sie hieß Schlüsselzusatz, daher kommt das SZ."],
-    ["G", "Und der Name sagt eigentlich schon alles: Das war ein Zusatzgerät, das man zwischen Fernschreiber und Leitung gesteckt hat. Heute würde man sagen, eine Verschlüsselungsschicht zwischen Endgerät und Übertragung."],
-    ["A", "Benutzt wurde sie ganz oben, für die Verbindungen zwischen der Führung in Berlin und den Heeresgruppen. Also nicht für einzelne Einheiten, sondern für die oberste Ebene."],
-    ["G", "Der große Unterschied zur Enigma: Hier musste keiner Lampen ablesen. Verschlüsseln und Entschlüsseln liefen komplett automatisch."],
-    ["A", "Die Bediener haben den Geheimtext nie gesehen. Auf der einen Seite tippt jemand Klartext rein, auf der anderen Seite kommt wieder Klartext raus. Gesendet wurde das als Funkfernschreiben, also ohne Morsecode."],
-    ["G", "Die erste Versuchsverbindung gab es ab Juni 1941, insgesamt waren es ungefähr 200 Geräte. Die Gegenstellen waren meistens mobil, mit zwei Lkw pro Einheit."],
-    ["A", "Das hier ist übrigens eine SZ 42 im Museum Bletchley Park. Die Briten haben sie Tunny genannt."]
-  ]},
-  { slide: 6, title: "3.1 Enigma: Aufbau", lines: [
-    ["G", "Okay, jetzt wird es technisch. Erst mal der Aufbau der Enigma."],
-    ["G", "Nummer 1 sind die Walzen. Drin stecken drei, ausgesucht aus einem Satz von fünf. Jede Walze ist intern fest verdrahtet: 26 Kontakte links, 26 rechts, und jede Walze verbindet die anders."],
-    ["A", "Technisch gesehen ist jede Walze also eine feste Permutation des Alphabets, sprich eine Vertauschung der 26 Buchstaben."],
-    ["G", "Nummer 2 ist das Lampenfeld, Nummer 3 die Tastatur, jeweils mit 26 Buchstaben. Nummer 4 ist das Steckerbrett. Da werden mit Kabeln Buchstaben paarweise vertauscht, meistens mit 10 Kabeln."],
-    ["A", "Und links neben den Walzen sitzt noch die Umkehrwalze. Die sieht man auf dem Foto nicht, aber die wird gleich der wichtigste Teil."],
-    ["G", "Der Schlüssel hat vier Teile: die Walzenlage, also welche drei Walzen in welcher Reihenfolge stecken, dann die Ringstellung, die Grundstellung, also die Startposition, und die Steckerverbindungen."],
-    ["A", "Zusammen ergibt das ungefähr 10 hoch 23 mögliche Einstellungen. Umgerechnet sind das etwa 2 hoch 76, also ein Schlüsselraum von rund 76 Bit."],
-    ["G", "Brute Force, also einfach alles durchprobieren, war damit völlig ausgeschlossen. Wer die Enigma knacken wollte, brauchte einen schlaueren Weg."]
-  ]},
-  { slide: 7, title: "3.1 Enigma: Weg des Stroms", lines: [
-    ["G", "Was passiert jetzt bei einem Tastendruck? Als Erstes dreht sich die rechte Walze einen Schritt weiter, und erst danach fließt Strom."],
-    ["A", "Dadurch ist die Vertauschung bei jedem Buchstaben eine andere. Das nennt man polyalphabetische Substitution: Derselbe Klartextbuchstabe wird an verschiedenen Stellen zu verschiedenen Geheimtextbuchstaben."],
-    ["G", "Beispiel aus unserer Quelle: Ich drücke Q. Der Strom geht durch das Steckerbrett, durch die Eintrittswalze und dann durch die rechte, die mittlere und die linke Walze bis zur Umkehrwalze."],
-    ["G", "Die Umkehrwalze schickt den Strom zurück. Er läuft über andere Kontakte nochmal durch alle drei Walzen, die Eintrittswalze und das Steckerbrett. Am Ende leuchtet E. Aus Q wird also E."],
-    ["A", "Daraus folgen zwei Eigenschaften. Erstens: Bei gleicher Einstellung wird aus E wieder Q. Jede einzelne Vertauschung ist also ihre eigene Umkehrung, mathematisch nennt man das Involution."],
-    ["G", "Praktisch heißt das: Verschlüsseln und Entschlüsseln ist derselbe Vorgang. Man braucht keinen extra Entschlüsselungsmodus."],
-    ["A", "Zweitens: Weil der Rückweg immer über andere Kontakte läuft, kann ein Buchstabe nie auf sich selbst abgebildet werden. Ein A wird nie zu A. Die Vertauschung hat also keinen Fixpunkt."],
-    ["G", "Klingt nach einem Detail, ist aber eine Information, die im Geheimtext steckt. Merkt euch das, wir kommen bei den Schwächen darauf zurück."]
-  ]},
-  { slide: 8, title: "3.2 Lorenz: Addition im Fernschreibcode", lines: [
-    ["G", "Jetzt zu Lorenz. Lorenz arbeitet nicht mit Buchstaben, sondern direkt auf dem Fernschreibcode. Ein Zeichen besteht aus fünf Schritten, und jeder Schritt ist entweder Strom oder kein Strom."],
-    ["A", "Strom schreibt man als Kreuz, kein Strom als Punkt. Für uns heißt das: Jedes Zeichen ist ein Wert mit 5 Bit. Kreuz ist 1, Punkt ist 0."],
-    ["G", "Die Maschine verknüpft jetzt jedes Klartextzeichen mit einem Zeichen aus einem Schlüsselstrom, Bit für Bit. Die Regel steht links: Gleiche Bits ergeben 0, verschiedene ergeben 1."],
-    ["A", "Und das ist XOR, genau das, was ihr aus der Programmierung kennt."],
-    ["G", "Rechts das Beispiel aus der Quelle. Der Klartext M ist 00111. Das Schlüsselzeichen N ist 00110."],
-    ["A", "Bitweise XOR: Die ersten vier Bits sind jeweils gleich, also 0. Nur das letzte unterscheidet sich, also 1. Raus kommt 00001, und das ist T."],
-    ["G", "Der Empfänger rechnet T XOR N und hat wieder sein M. Das klappt, weil XOR selbstinvers ist: Ein Wert XOR sich selbst ergibt 0, also hebt sich der Schlüssel wieder auf."],
-    ["A", "Heute würde man so etwas eine Stromchiffre nennen, also Klartext XOR Schlüsselstrom. Moderne Stromchiffren wie ChaCha20 arbeiten nach genau diesem Grundprinzip."],
-    ["G", "Unterm Strich also dasselbe wie bei der Enigma: Mit derselben Einstellung rechnet man einfach zurück. Nur der Grund ist ein anderer. Bei der Enigma ist es die Umkehrwalze, bei Lorenz die Mathematik von XOR."]
-  ]},
-  { slide: 9, title: "3.2 Lorenz: Zwölf Räder erzeugen den Schlüssel", lines: [
-    ["A", "Bei einer Stromchiffre steht und fällt alles mit dem Schlüsselstrom. Und wo kommt der hier her?"],
-    ["G", "Von 12 Nockenrädern. Die seht ihr hier unten in einer Reihe."],
-    ["G", "Die gibt es in drei Gruppen. Fünf Chi-Räder drehen bei jedem Zeichen einen Schritt weiter, komplett regelmäßig. Fünf Psi-Räder drehen unregelmäßig, entweder alle zusammen oder gar nicht."],
-    ["A", "Und ob sie sich drehen, entscheiden die zwei Motorräder."],
-    ["G", "Je fünf Chi-Räder und Psi-Räder, das passt genau zu den 5 Bit eines Zeichens: Jedes Rad liefert ein Bit. Das Schlüsselzeichen ist dann Chi-Zeichen XOR Psi-Zeichen."],
-    ["A", "Jedes Rad hat zwischen 23 und 61 Nocken, und jede Nocke kann man einzeln einschalten oder ausschalten, also 1 oder 0. Die Nockenmuster sind quasi der geheime Startzustand von einem mechanischen Pseudozufallsgenerator."],
-    ["G", "Allein für die Startstellungen gibt es ungefähr 1,6 Billiarden Möglichkeiten. Die Nockenmuster wurden anfangs monatlich gewechselt, ab August 1944 dann täglich."]
-  ]},
-  { slide: 10, title: "3.3 Vergleich der Konstruktionen", lines: [
-    ["G", "Zum Abschluss vom Technikteil nochmal beide nebeneinander. Die Enigma arbeitet auf 26 Buchstaben, Lorenz auf Zeichen mit 5 Bit."],
-    ["A", "Die Enigma ist eine Substitution: Jeder Buchstabe wird durch einen anderen ersetzt, und die Ersetzung ändert sich bei jedem Tastendruck. Lorenz ist eine Stromchiffre, also XOR mit einem Schlüsselstrom."],
-    ["G", "Der Schlüssel ist bei der Enigma Walzenlage, Ringstellung, Grundstellung und Stecker. Bei Lorenz sind es die Nockenmuster und die Startstellung der 12 Räder."],
-    ["A", "Die Enigma wurde von Hand bedient und gemorst, Lorenz lief automatisch am Fernschreiber und ging als Funkfernschreiben raus. Die Enigma war für die Truppe, Lorenz für die höchste Führung."],
-    ["G", "Gemeinsam ist beiden: Verschlüsseln und Entschlüsseln ist derselbe Vorgang. Bei der Enigma wegen der Umkehrwalze, bei Lorenz wegen XOR."],
-    ["A", "Zwei grundverschiedene Designs also. Und jetzt schauen wir uns an, wo die jeweils angreifbar waren."]
-  ]},
-  { slide: 11, title: "4.1 Enigma: Schwächen der Konstruktion", lines: [
-    ["A", "Fangen wir wieder mit der Enigma an. Da gab es drei Schwachstellen, die direkt aus dem Design kommen."],
-    ["A", "Die erste ist die Umkehrwalze. Kein Buchstabe wird zu sich selbst. Drücke ich A, kann jede Lampe leuchten, nur A nicht."],
-    ["G", "Klingt erst mal harmlos."],
-    ["A", "Ist es aber nicht. Das heißt nämlich: Jeder Buchstabe im Geheimtext verrät schon etwas über den Klartext an dieser Stelle. Bei einer wirklich sicheren Chiffre darf der Geheimtext gar nichts über den Klartext verraten."],
-    ["G", "Die zweite Schwäche: Die Walzen bewegen sich total regelmäßig, wie ein Kilometerzähler. Die rechte dreht bei jedem Zeichen, die mittlere nur alle 26 Zeichen und die linke fast nie."],
-    ["A", "Über längere Strecken ändert sich also nur die rechte Walze. Der Großteil vom Zustand der Maschine bleibt lange gleich, und das macht es leichter, ihn zu rekonstruieren."],
-    ["G", "Die dritte ist das Steckerbrett. Das tauscht immer paarweise, also symmetrisch: Ist A mit Z verbunden, gilt auch Z mit A."],
-    ["A", "Und genau diese Symmetrie hat Gordon Welchman genutzt, um die Bombe zu verbessern."],
-    ["G", "Dazu kamen noch zwei Sachen außerhalb der Technik. Erstens die Bedienung: Viele Meldungen enthielten vorhersagbare Textstücke."],
-    ["A", "Und zweitens gab es Vorarbeit. Polnische Mathematiker hatten die Enigma schon 1932 gebrochen und 1939 die Briten informiert."]
-  ]},
-  { slide: 12, title: "4.1 Enigma: Vermuteter Klartext und Ausschluss", lines: [
-    ["A", "Wie nutzt man das aus? Mit einem Crib. Ein Crib ist ein vermuteter Klartext, also ein Textstück, von dem man annimmt, dass es in der Nachricht vorkommt."],
-    ["G", "Kryptologisch ist das ein Known-Plaintext-Angriff: Der Angreifer kennt oder errät einen Teil vom Klartext."],
-    ["A", "Im Beispiel von Tony Sale ist das Spruchnummer eins, mit einem X zwischen den Wörtern. Oben steht der abgefangene Geheimtext. Das Problem: Man weiß nicht, an welcher Position der Crib steht."],
-    ["G", "Also legt man ihn einfach an verschiedenen Positionen an. Zwei davon seht ihr hier, Lage A und Lage B."],
-    ["A", "Schaut euch Lage A an. Da steht ein M direkt über einem M. Das hieße, aus M wurde M, und das ist wegen der fehlenden Fixpunkte unmöglich."],
-    ["G", "Lage A fliegt also raus. Und zwar mit absoluter Sicherheit, nicht nur mit einer gewissen Wahrscheinlichkeit."],
-    ["A", "Lage B hat keinen solchen Widerspruch. Das heißt aber nicht, dass sie stimmt. Sie ist nur noch nicht widerlegt."],
-    ["G", "Nach diesem Prinzip hat die Bombe Walzenstellungen durchgeprüft, und zwar mit hohem Tempo. Programmiertechnisch kann man sich das wie eine Suche mit frühem Abbruch vorstellen."],
-    ["A", "Sobald ein Widerspruch auftritt, wird die Stellung verworfen und die nächste geprüft. Ein Widerspruch reicht. Die erste Bombe lief ab März 1940, insgesamt wurden über 200 gebaut."]
-  ]},
-  { slide: 13, title: "4.2 Lorenz: Der Fehler vom 30. August 1941", lines: [
-    ["G", "Jetzt zu Lorenz. Und da fing alles mit einem einzigen Bedienfehler an."],
-    ["A", "Am 30. August 1941 wurde eine Nachricht mit rund 4000 Zeichen gesendet. Die kam aber gestört an."],
-    ["G", "Also hat der Bediener sie nochmal geschickt, mit denselben Radstellungen, also mit demselben Schlüsselstrom. Und das war gegen die Vorschriften."],
-    ["A", "Dazu kommt: Beim zweiten Mal hat er abgekürzt. Der Text war also nicht exakt gleich."],
-    ["G", "Warum ist das den Briten überhaupt aufgefallen? Bis Oktober 1942 wurde die Startstellung als 12 unverschlüsselte Buchstaben mitgeschickt."],
-    ["A", "Und beide Sendungen hatten dieselben 12 Buchstaben."],
-    ["G", "Hier seht ihr die ersten 30 Zeichen von beiden Sendungen. Die ersten sieben sind gleich, danach laufen sie wegen der Abkürzungen auseinander."],
-    ["A", "So etwas nennt man eine Depth: zwei fast gleiche Klartexte mit demselben Schlüssel. John Tiltman hat 10 Tage gebraucht, um die beiden Texte von Hand zu trennen, und hatte danach rund 4000 Zeichen Schlüsselstrom."],
-    ["G", "Und im Januar 1942 hat Bill Tutte allein aus diesem Schlüsselstrom die Struktur der Maschine abgeleitet. Ohne jemals eine gesehen zu haben."],
-    ["A", "Im Grunde Reverse Engineering, nur aus dem Output."]
-  ]},
-  { slide: 14, title: "4.2 Lorenz: Warum sich der Schlüssel aufhebt", lines: [
-    ["A", "Warum ist so eine Depth so fatal? Wegen XOR."],
-    ["G", "P ist der Klartext, K der Schlüssel, C der Geheimtext. Sendung 1: C1 gleich P1 XOR K. Sendung 2: C2 gleich P2 XOR K."],
-    ["A", "Jetzt verknüpft man die beiden Geheimtexte mit XOR. Dann steht K zweimal drin, und K XOR K ist 0. Der Schlüssel fällt komplett raus."],
-    ["G", "Übrig bleibt P1 XOR P2, also nur noch die zwei Klartexte miteinander verknüpft. Die ganze Verschlüsselung ist damit ausgehebelt."],
-    ["A", "Und wie trennt man die jetzt? Tiltman hat geraten. Er hat ein wahrscheinliches Wort an einer Position eingesetzt und geschaut, was im anderen Text rauskommt."],
-    ["G", "Beispiel aus der Quelle: Das Wort geheim an Stelle 83 bis 88 ergibt im anderen Text eratta. Und das passt zu Militärattaché."],
-    ["A", "So hat er sich Stück für Stück durchgearbeitet. Und sobald ein Klartext bekannt ist, liefert P XOR C direkt den Schlüsselstrom."],
-    ["G", "Das ist übrigens kein Problem von damals. Bei modernen Stromchiffren ist das genau der Grund, warum man denselben Schlüsselstrom nie zweimal verwenden darf."],
-    ["A", "Bei AES im Counter-Modus oder bei ChaCha20 heißt das: Eine Nonce darf pro Schlüssel nur ein einziges Mal benutzt werden. Sonst passiert genau das, was ihr hier seht."]
-  ]},
-  { slide: 15, title: "4.2 Lorenz: Die Schwäche der ψ-Räder", lines: [
-    ["G", "Die Depth war aber ein Einzelfall. Um Lorenz regelmäßig zu knacken, brauchte man eine Schwäche in der Maschine selbst."],
-    ["A", "Und die lag ausgerechnet bei den Psi-Rädern. Oben seht ihr ein Stück Chi-Strom und ein Stück Psi-Strom. Im Chi-Strom ändert sich das Zeichen bei jedem Schritt."],
-    ["G", "Im Psi-Strom wiederholt sich dagegen etwas: zweimal G, dreimal Z, zweimal D. Das liegt daran, dass die Psi-Räder oft stillstehen und dann immer wieder dasselbe Zeichen liefern."],
-    ["A", "Der Schlüsselstrom ist also nicht gleichverteilt zufällig. Er hat einen statistischen Bias."],
-    ["G", "Bill Tutte hat im November 1942 einen Weg gefunden, das auszunutzen. Man vergleicht den Geheimtext mit dem Strom der ersten zwei Chi-Räder und zählt die Übereinstimmungen."],
-    ["A", "Bei einer falschen Startstellung kommt man auf etwa 50 Prozent. Das wäre der Erwartungswert bei reinem Zufall, die Zahl haben wir selbst ergänzt."],
-    ["G", "Bei der richtigen Startstellung sind es rund 55 Prozent. Also 5 Prozentpunkte, ein schwaches Signal im Rauschen. Je mehr Zeichen man zählt, desto klarer hebt sich der Wert ab."],
-    ["A", "Der Haken war der Rechenaufwand: sehr viele Stellungen, und jede über eine lange Nachricht. Von Hand hätte das nach Schätzung von Max Newman für eine lange Nachricht mehrere hundert Jahre gedauert."],
-    ["G", "Und das Ironische: Die unregelmäßige Psi-Bewegung sollte Lorenz eigentlich sicherer machen."],
-    ["A", "Am Ende war genau sie die entscheidende Schwäche."]
-  ]},
-  { slide: 16, title: "Logischer vs. statistischer Angriff", lines: [
-    ["A", "Und damit sind wir beim Kern."],
-    ["G", "Der Angriff auf die Enigma ist logisch. Er braucht einen Crib, also bekannten Klartext. Die Prüfregel lautet: Die Verdrahtung muss zu allen Buchstabenpaaren passen."],
-    ["A", "Und da reicht eine einzige Prüfung, denn ein Widerspruch schließt eine Walzenstellung sicher aus. Am Ende bleiben nur wenige Stellungen übrig. Das Werkzeug ist die Bombe, elektromechanisch, mit Relais."],
-    ["G", "Der Angriff auf Lorenz ist statistisch. Er braucht nur den Geheimtext, keine Depth. Kryptologisch ist das ein Ciphertext-only-Angriff, die schwierigste Ausgangslage für einen Angreifer."],
-    ["A", "Die Prüfregel: Bei der richtigen Chi-Stellung stimmen rund 55 statt 50 Prozent überein. Ein einzelnes Zeichen beweist da gar nichts, erst die Zählung über viele Zeichen."],
-    ["G", "Am Ende nimmt man die Stellung mit dem auffälligsten Zählwert. Das Werkzeug ist Colossus, elektronisch, mit Röhren."],
-    ["A", "Kurz gesagt: Bei der Enigma kann man ausschließen."],
-    ["G", "Bei Lorenz muss man zählen. Und zählen über Millionen von Zeichen geht nur mit Elektronik."]
-  ]},
-  { slide: 17, title: "Colossus: Statistik in Elektronik", lines: [
-    ["G", "Und genau das hat Colossus gemacht. Hier seht ihr Colossus Mark 2 mit einer Bedienerin."],
-    ["A", "Idee und Bau kamen von Tommy Flowers von der Forschungsstelle der britischen Post."],
-    ["G", "Zur Architektur: Colossus hat den Geheimtext von einem Lochstreifen eingelesen. Den Chi-Strom hat er aber nicht eingelesen, sondern selbst elektronisch erzeugt."],
-    ["A", "Dann hat er beide Ströme verglichen und die Übereinstimmungen gezählt."],
-    ["G", "Zur Leistung: Mark 1 hatte etwa 1600 Röhren und schaffte 5000 Zeichen pro Sekunde."],
-    ["A", "Mark 2 hatte etwa 2400 Röhren, hat fünf Ströme parallel verarbeitet und kam damit auf 25.000 Zeichen pro Sekunde. Parallelisierung für mehr Durchsatz, ein Prinzip, das bis heute in jeder CPU und GPU steckt."],
-    ["G", "Der erste Einsatz war am 5. Februar 1944, bei Kriegsende gab es 10 Geräte."],
-    ["A", "Wichtig ist: Colossus hat keinen Klartext ausgegeben, sondern nur Zählwerte für Radstellungen. Bis Kriegsende wurden so 63 Millionen Zeichen entschlüsselt."]
-  ]},
-  { slide: 18, title: "Antwort auf die Leitfrage", lines: [
-    ["A", "Zurück zu unserer Leitfrage: Wie prägt die Konstruktion einer Maschine die Möglichkeiten ihrer Kryptanalyse? Das ist jetzt unsere eigene Schlussfolgerung."],
-    ["G", "Bei der Enigma erzeugt die Umkehrwalze eine harte Regel: keine Fixpunkte, kein Buchstabe wird zu sich selbst. So eine Regel kann man prüfen, und ein Verstoß ist sofort sichtbar."],
-    ["A", "Daraus folgt ein logischer Ausschluss, und dafür hat eine elektromechanische Maschine wie die Bombe gereicht."],
-    ["G", "Bei Lorenz gibt es durch XOR und die Psi-Bewegung keine harte Regel, sondern nur einen schwachen Bias: 55 statt 50 Prozent. Den sieht man erst nach sehr vielen Zeichen."],
-    ["A", "Daraus folgt ein statistischer Angriff, und dafür brauchte man die Geschwindigkeit von Colossus."],
-    ["G", "Unsere Antwort ist also: Die Konstruktion entscheidet, ob ein Angriff ausschließen kann oder zählen muss."],
-    ["A", "Eine Einschränkung gehört aber dazu: Den Einstieg haben in beiden Fällen Menschen geliefert. Bei der Enigma vorhersagbare Texte, bei Lorenz eine wiederholte Sendung."],
-    ["G", "Die beste Mathematik hilft also nichts, wenn bei der Bedienung Fehler passieren."]
-  ]},
-  { slide: 19, title: "Diskussion", lines: [
-    ["A", "Zum Schluss haben wir noch eine Frage an euch. Was macht ein Verfahren eher sicher: Komplexität oder mathematische Struktur?"],
-    ["G", "Die Enigma hat auf Komplexität gesetzt, also auf viele bewegliche Teile: Walzenlage, Ringstellung, Steckerverbindungen. Gebrochen wurde sie über eine feste Konstruktionsregel der Umkehrwalze."],
-    ["A", "Lorenz hat auf ein mathematisches Prinzip gesetzt, XOR mit einem Schlüsselstrom. Gebrochen wurde sie über einen Bedienfehler und die Regelmäßigkeit der Psi-Räder."],
-    ["G", "Und noch ein Denkanstoß: Bill Tutte hat die Lorenz-Maschine rekonstruiert, ohne sie je gesehen zu haben. Muss ein Verfahren also auch dann sicher sein, wenn der Gegner genau weiß, wie es funktioniert?"],
-    ["A", "Was meint ihr?"],
-    ["G", "Unsere Quellen und Bildnachweise findet ihr auf den letzten zwei Folien."],
-    ["A", "Danke fürs Zuhören!"]
-  ]}
+ {
+  "slide": 1,
+  "title": "Enigma vs. Lorenz-Maschine",
+  "lines": [
+   [
+    "G",
+    "Hallo zusammen. Wir sind Geronimo und Angelo, und heute geht es um Kryptologie im Zweiten Weltkrieg."
+   ],
+   [
+    "A",
+    "Genauer gesagt vergleichen wir zwei deutsche Verschlüsselungsmaschinen: die Enigma und die Lorenz-Maschine. Beide erzeugen ihren Schlüssel mit Rädern, die sich drehen. Deshalb nennt man sie Rotorchiffren."
+   ]
+  ]
+ },
+ {
+  "slide": 2,
+  "title": "Gliederung",
+  "lines": [
+   [
+    "G",
+    "Zuerst stellen wir unsere Leitfrage vor. Danach geht es um den historischen Kontext, also darum, wer die beiden Maschinen wofür eingesetzt hat."
+   ],
+   [
+    "A",
+    "Im dritten Teil erklären wir, wie die Maschinen technisch funktionieren, und vergleichen ihre Konstruktionen."
+   ],
+   [
+    "G",
+    "Im vierten Teil zeigen wir, wo ihre Schwächen lagen und warum die Briten dafür zwei völlig unterschiedliche Angriffe brauchten."
+   ],
+   [
+    "A",
+    "Am Ende beantworten wir die Leitfrage und stellen euch eine Frage zur Diskussion."
+   ]
+  ]
+ },
+ {
+  "slide": 3,
+  "title": "Zwei Maschinen, zwei Angriffe",
+  "lines": [
+   [
+    "G",
+    "Links seht ihr die Enigma, rechts die Lorenz SZ 42. Beide galten bei den Deutschen als unknackbar, und beide wurden trotzdem gebrochen."
+   ],
+   [
+    "A",
+    "Spannend ist, womit. Gegen die Enigma bauten die Briten die sogenannte Bombe. Das war eine elektromechanische Maschine, die mit Relais arbeitete."
+   ],
+   [
+    "G",
+    "Gegen Lorenz bauten sie Colossus. Colossus gilt als der erste elektronische Digitalrechner und ist damit ein früher Vorfahre der Computer, mit denen wir heute arbeiten."
+   ],
+   [
+    "A",
+    "Zwei Maschinen, zwei völlig verschiedene Werkzeuge. Das ist kein Zufall. Daraus ergibt sich unsere Leitfrage: Wie prägt die Konstruktion einer Maschine die Möglichkeiten ihrer Kryptanalyse?"
+   ],
+   [
+    "G",
+    "Kurz zu den Begriffen: Kryptologie ist der Oberbegriff. Kryptografie bedeutet Verschlüsseln, Kryptanalyse bedeutet Knacken, also an den Klartext zu kommen, ohne den Schlüssel zu kennen."
+   ],
+   [
+    "A",
+    "Wir wollen also herausfinden, ob schon die Bauweise eines Verfahrens festlegt, mit welcher Art von Angriff man es brechen kann. Behaltet diese Frage im Hinterkopf. Am Ende kommen wir auf sie zurück."
+   ]
+  ]
+ },
+ {
+  "slide": 4,
+  "title": "2.1 Enigma: Funkverschlüsselung der Truppe",
+  "lines": [
+   [
+    "G",
+    "Fangen wir mit der Enigma an. Erfunden hat sie Arthur Scherbius kurz nach dem Ersten Weltkrieg. Zwischen 1926 und 1935 übernahmen die deutschen Streitkräfte sie."
+   ],
+   [
+    "A",
+    "Heer, Luftwaffe und Kriegsmarine nutzten Versionen mit Steckerbrett. Was das Steckerbrett macht, zeigen wir gleich im Technikteil."
+   ],
+   [
+    "G",
+    "Verschlüsselt wurden vor allem taktische Meldungen, also Nachrichten aus dem laufenden Kampfgeschehen. Gesendet wurden sie immer per Morsefunk."
+   ],
+   [
+    "A",
+    "Funk ist allerdings ein offener Kanal: Wer die Frequenz kennt, kann mithören. Der Gegner konnte also jeden Geheimtext mitschreiben, und die gesamte Sicherheit hing an der Verschlüsselung."
+   ],
+   [
+    "G",
+    "Auf dem Foto seht ihr eine Enigma in einem Befehlsfahrzeug in Frankreich, 1940. Die Bedienung war Handarbeit: Einer tippte den Klartext Buchstabe für Buchstabe ein, ein Zweiter schrieb mit, welche Lampe aufleuchtete, und ein Funker morste das Ergebnis."
+   ],
+   [
+    "A",
+    "Damit der Empfänger die Nachricht entschlüsseln konnte, musste seine Maschine genauso eingestellt sein. Sender und Empfänger brauchen also denselben Schlüssel. Man spricht von einem symmetrischen Verfahren. Die Einstellungen wechselten meist alle 24 Stunden."
+   ]
+  ]
+ },
+ {
+  "slide": 5,
+  "title": "2.2 Lorenz SZ 40/42: Fernschreiben der obersten Führung",
+  "lines": [
+   [
+    "A",
+    "Die Lorenz-Maschine spielt in einer ganz anderen Liga. Ihr Name war Schlüsselzusatz, daher die Abkürzung SZ."
+   ],
+   [
+    "G",
+    "Der Name verrät schon, was sie war: ein Zusatzgerät, das zwischen Fernschreiber und Leitung gesteckt wurde. Heute würde man von einer Verschlüsselungsschicht zwischen Endgerät und Übertragungsweg sprechen."
+   ],
+   [
+    "A",
+    "Eingesetzt wurde sie ganz oben: für die Verbindungen zwischen der Führung in Berlin und den Heeresgruppen."
+   ],
+   [
+    "G",
+    "Der große Unterschied zur Enigma: Niemand musste Lampen ablesen. Verschlüsselung und Entschlüsselung liefen vollautomatisch, und die Bediener bekamen den Geheimtext nie zu sehen."
+   ],
+   [
+    "A",
+    "Auf der einen Seite tippte jemand Klartext ein, auf der anderen Seite kam wieder Klartext heraus. Übertragen wurde das als Funkfernschreiben, also ohne Morsecode."
+   ],
+   [
+    "G",
+    "Die erste Versuchsverbindung lief ab Juni 1941, insgesamt gab es etwa 200 Geräte. Die Gegenstellen waren meist mobil und bestanden aus zwei Lkw pro Einheit."
+   ],
+   [
+    "A",
+    "Das Foto zeigt eine SZ 42 im Museum Bletchley Park. Die Briten gaben der Maschine den Decknamen Tunny."
+   ]
+  ]
+ },
+ {
+  "slide": 6,
+  "title": "3.1 Enigma: Aufbau",
+  "lines": [
+   [
+    "G",
+    "Jetzt wird es technisch. Wir beginnen mit dem Aufbau der Enigma. Nummer 1 sind die Walzen: Drei stecken in der Maschine, ausgewählt aus einem Satz von fünf. Jede Walze ist innen fest verdrahtet und verbindet 26 Kontakte auf der einen Seite mit 26 Kontakten auf der anderen, bei jeder Walze anders."
+   ],
+   [
+    "A",
+    "Mathematisch ist jede Walze damit eine feste Permutation, also eine Vertauschung der 26 Buchstaben."
+   ],
+   [
+    "G",
+    "Nummer 2 ist das Lampenfeld, Nummer 3 die Tastatur, beide mit 26 Buchstaben. Nummer 4 ist das Steckerbrett. Dort werden mit Kabeln Buchstaben paarweise vertauscht, meist mit 10 Kabeln."
+   ],
+   [
+    "A",
+    "Links neben den Walzen sitzt außerdem die Umkehrwalze. Auf dem Foto ist sie verdeckt, aber sie wird gleich der wichtigste Teil."
+   ],
+   [
+    "G",
+    "Der Schlüssel besteht aus vier Teilen: der Walzenlage, also welche drei Walzen in welcher Reihenfolge stecken, der Ringstellung, der Grundstellung, also der Startposition der Walzen, und den Steckerverbindungen."
+   ],
+   [
+    "A",
+    "Zusammen ergibt das etwa 10 hoch 23 mögliche Einstellungen. Umgerechnet sind das ungefähr 2 hoch 76, also ein Schlüsselraum von rund 76 Bit. Ein Brute-Force-Angriff, bei dem man einfach alles durchprobiert, war damit ausgeschlossen. Wer die Enigma knacken wollte, brauchte einen klügeren Weg."
+   ]
+  ]
+ },
+ {
+  "slide": 7,
+  "title": "3.1 Enigma: Weg des Stroms",
+  "lines": [
+   [
+    "G",
+    "Was passiert bei einem Tastendruck? Zuerst dreht sich die rechte Walze um einen Schritt weiter. Erst danach fließt Strom."
+   ],
+   [
+    "A",
+    "Dadurch ist die Vertauschung bei jedem Buchstaben eine andere. Das nennt man polyalphabetische Substitution: Derselbe Klartextbuchstabe wird an verschiedenen Stellen zu verschiedenen Geheimtextbuchstaben."
+   ],
+   [
+    "G",
+    "Hier das Beispiel aus unserer Quelle: Ich drücke Q. Der Strom fließt durch das Steckerbrett und die Eintrittswalze, dann durch die rechte, die mittlere und die linke Walze bis zur Umkehrwalze. Diese schickt ihn auf anderen Kontakten zurück, wieder durch alle Walzen und das Steckerbrett. Am Ende leuchtet die Lampe E."
+   ],
+   [
+    "A",
+    "Daraus folgen zwei Eigenschaften. Erstens: Bei gleicher Einstellung wird aus E wieder Q. Jede einzelne Vertauschung ist also ihre eigene Umkehrung. Mathematisch nennt man das eine Involution."
+   ],
+   [
+    "G",
+    "Praktisch bedeutet das: Verschlüsseln und Entschlüsseln sind derselbe Vorgang. Die Maschine braucht keinen eigenen Modus zum Entschlüsseln."
+   ],
+   [
+    "A",
+    "Zweitens: Weil der Rückweg immer über andere Kontakte läuft, wird ein Buchstabe nie zu sich selbst verschlüsselt. Aus A wird nie A. Die Vertauschung hat also keinen Fixpunkt."
+   ],
+   [
+    "G",
+    "Das klingt nach einem Detail. Merkt es euch trotzdem, bei den Schwächen kommen wir darauf zurück."
+   ]
+  ]
+ },
+ {
+  "slide": 8,
+  "title": "3.2 Lorenz: Addition im Fernschreibcode",
+  "lines": [
+   [
+    "G",
+    "Jetzt zur Lorenz-Maschine. Sie arbeitet nicht mit Buchstaben, sondern direkt mit dem Fernschreibcode. Jedes Zeichen besteht dort aus fünf Schritten, und jeder Schritt ist entweder Strom oder kein Strom."
+   ],
+   [
+    "A",
+    "Strom wird als Kreuz geschrieben, kein Strom als Punkt. In unserer Sprache ist jedes Zeichen also ein Wert mit 5 Bit: Kreuz steht für 1, Punkt für 0."
+   ],
+   [
+    "G",
+    "Die Maschine verknüpft jedes Klartextzeichen Bit für Bit mit einem Zeichen aus einem Schlüsselstrom. Die Regel steht links: Zwei gleiche Bits ergeben 0, zwei verschiedene ergeben 1."
+   ],
+   [
+    "A",
+    "Das ist genau die XOR-Verknüpfung, die ihr aus der Programmierung kennt."
+   ],
+   [
+    "G",
+    "Rechts seht ihr das Beispiel aus unserer Quelle. Der Klartextbuchstabe M ist 00111, das Schlüsselzeichen N ist 00110."
+   ],
+   [
+    "A",
+    "Die ersten vier Bits sind jeweils gleich und ergeben 0. Nur das letzte Bit unterscheidet sich und ergibt 1. Heraus kommt 00001, und das ist der Buchstabe T."
+   ],
+   [
+    "G",
+    "Der Empfänger rechnet T XOR N und erhält wieder M. Das funktioniert, weil XOR selbstinvers ist: Ein Wert mit sich selbst verknüpft ergibt 0, also hebt sich der Schlüssel wieder auf."
+   ],
+   [
+    "A",
+    "Heute nennt man ein solches Verfahren Stromchiffre: Der Klartext wird mit einem Schlüsselstrom per XOR verknüpft."
+   ],
+   [
+    "G",
+    "Im Ergebnis ist es also wie bei der Enigma: Mit derselben Einstellung rechnet man einfach zurück. Nur der Grund ist ein anderer. Bei der Enigma ist es die Umkehrwalze, bei Lorenz die Mathematik von XOR."
+   ]
+  ]
+ },
+ {
+  "slide": 9,
+  "title": "3.2 Lorenz: Zwölf Räder erzeugen den Schlüssel",
+  "lines": [
+   [
+    "A",
+    "Bei einer Stromchiffre hängt alles am Schlüsselstrom. Aber woher kommt er?"
+   ],
+   [
+    "G",
+    "Er wird von 12 Nockenrädern erzeugt, die ihr hier unten in einer Reihe seht. Die Räder bilden drei Gruppen. Die fünf Chi-Räder drehen sich bei jedem Zeichen um einen Schritt weiter, also völlig regelmäßig. Die fünf Psi-Räder drehen sich unregelmäßig: entweder alle zusammen oder gar nicht."
+   ],
+   [
+    "A",
+    "Ob sie sich drehen, entscheiden die zwei Motorräder."
+   ],
+   [
+    "G",
+    "Fünf Chi-Räder und fünf Psi-Räder passen genau zu den 5 Bit eines Zeichens, denn jedes Rad liefert ein Bit. Das Schlüsselzeichen entsteht, indem man das Chi-Zeichen und das Psi-Zeichen per XOR verknüpft."
+   ],
+   [
+    "A",
+    "Jedes Rad hat zwischen 23 und 61 Nocken, und jede Nocke lässt sich einzeln einschalten oder ausschalten, also auf 1 oder 0 setzen. Die Nockenmuster bilden damit den geheimen Startzustand eines mechanischen Pseudozufallsgenerators."
+   ],
+   [
+    "G",
+    "Allein für die Startstellungen gibt es etwa 1,6 Billiarden Möglichkeiten. Die Muster der Chi-Räder wurden anfangs monatlich gewechselt, ab August 1944 wurden alle Muster täglich gewechselt."
+   ]
+  ]
+ },
+ {
+  "slide": 10,
+  "title": "3.3 Vergleich der Konstruktionen",
+  "lines": [
+   [
+    "G",
+    "Zum Abschluss des Technikteils stellen wir beide Maschinen gegenüber. Die Enigma arbeitet mit 26 Buchstaben, Lorenz mit Fernschreibzeichen aus 5 Bit."
+   ],
+   [
+    "A",
+    "Die Enigma ersetzt jeden Buchstaben durch einen anderen, und diese Ersetzung ändert sich bei jedem Tastendruck. Lorenz dagegen verknüpft den Klartext per XOR mit einem Schlüsselstrom."
+   ],
+   [
+    "G",
+    "Auch die Schlüssel unterscheiden sich. Bei der Enigma sind es Walzenlage, Ringstellung, Grundstellung und Steckerverbindungen, bei Lorenz die Nockenmuster und die Startstellung der 12 Räder."
+   ],
+   [
+    "A",
+    "Die Enigma wurde von Hand bedient, und ihr Ergebnis wurde gemorst. Lorenz arbeitete automatisch am Fernschreiber und sendete per Funkfernschreiben. Die Enigma diente der Truppe, Lorenz der höchsten Führung."
+   ],
+   [
+    "G",
+    "Gemeinsam ist beiden, dass Verschlüsseln und Entschlüsseln derselbe Vorgang sind: bei der Enigma wegen der Umkehrwalze, bei Lorenz wegen XOR."
+   ],
+   [
+    "A",
+    "Es sind also zwei grundverschiedene Konstruktionen. Jetzt schauen wir uns an, wo sie jeweils angreifbar waren."
+   ]
+  ]
+ },
+ {
+  "slide": 11,
+  "title": "4.1 Enigma: Schwächen der Konstruktion",
+  "lines": [
+   [
+    "A",
+    "Bei der Enigma gab es drei Schwachstellen, die direkt aus der Konstruktion folgen. Die erste ist die Umkehrwalze: Kein Buchstabe wird zu sich selbst. Drückt man A, kann jede Lampe leuchten, nur nicht A."
+   ],
+   [
+    "G",
+    "Das klingt zunächst harmlos."
+   ],
+   [
+    "A",
+    "Das ist es aber nicht. Jeder Buchstabe im Geheimtext verrät damit etwas über den Klartext an derselben Stelle. Bei einem wirklich sicheren Verfahren dürfte der Geheimtext nichts über den Klartext verraten."
+   ],
+   [
+    "G",
+    "Die zweite Schwäche ist die regelmäßige Bewegung der Walzen. Sie funktioniert wie ein Kilometerzähler: Die rechte Walze dreht sich bei jedem Zeichen, die mittlere nur alle 26 Zeichen und die linke fast nie."
+   ],
+   [
+    "A",
+    "Über längere Strecken ändert sich also nur die rechte Walze. Der größte Teil der Einstellung bleibt lange gleich, und das macht es leichter, sie zu rekonstruieren."
+   ],
+   [
+    "G",
+    "Die dritte Schwäche ist das Steckerbrett. Es vertauscht immer paarweise: Ist A mit Z verbunden, ist auch Z mit A verbunden. Genau diese Symmetrie nutzte Gordon Welchman, um die Bombe zu verbessern."
+   ],
+   [
+    "A",
+    "Dazu kamen zwei Faktoren außerhalb der Technik. Zum einen enthielten viele Meldungen vorhersagbare Textstücke. Zum anderen gab es Vorarbeit: Polnische Mathematiker hatten die Enigma bereits 1932 gebrochen und 1939 die Briten informiert."
+   ]
+  ]
+ },
+ {
+  "slide": 12,
+  "title": "4.1 Enigma: Vermuteter Klartext und Ausschluss",
+  "lines": [
+   [
+    "A",
+    "Wie nutzt man diese Schwächen aus? Mit einem sogenannten Crib. Das ist ein vermuteter Klartext, also ein Textstück, von dem man annimmt, dass es in der Nachricht vorkommt."
+   ],
+   [
+    "G",
+    "In der Kryptologie nennt man das einen Known-Plaintext-Angriff: Der Angreifer kennt oder errät einen Teil des Klartexts."
+   ],
+   [
+    "A",
+    "Im Beispiel von Tony Sale lautet der Crib Spruchnummer eins, mit einem X zwischen den Wörtern. Darüber steht der abgefangene Geheimtext. Das Problem ist: Man weiß nicht, an welcher Stelle der Crib steht."
+   ],
+   [
+    "G",
+    "Deshalb legt man ihn probeweise an verschiedenen Stellen an. Zwei davon seht ihr hier: Lage A und Lage B."
+   ],
+   [
+    "A",
+    "In Lage A steht ein M direkt über einem M. Das würde bedeuten, dass M zu M verschlüsselt wurde. Wegen der Umkehrwalze ist das unmöglich."
+   ],
+   [
+    "G",
+    "Lage A ist damit ausgeschlossen, und zwar mit Sicherheit, nicht nur mit einer gewissen Wahrscheinlichkeit."
+   ],
+   [
+    "A",
+    "In Lage B gibt es keinen solchen Widerspruch. Das heißt aber nicht, dass sie richtig ist. Sie ist nur noch nicht widerlegt."
+   ],
+   [
+    "G",
+    "Nach diesem Prinzip prüfte die Bombe Walzenstellungen in hohem Tempo. Aus Programmiersicht ist das eine Suche mit frühem Abbruch: Sobald ein Widerspruch auftritt, wird die Stellung verworfen und die nächste geprüft."
+   ],
+   [
+    "A",
+    "Ein einziger Widerspruch genügt also. Die erste Bombe lief ab März 1940, insgesamt wurden über 200 gebaut."
+   ]
+  ]
+ },
+ {
+  "slide": 13,
+  "title": "4.2 Lorenz: Der Fehler vom 30. August 1941",
+  "lines": [
+   [
+    "G",
+    "Kommen wir zur Lorenz-Maschine. Hier begann alles mit einem einzigen Bedienfehler."
+   ],
+   [
+    "A",
+    "Am 30. August 1941 wurde eine Nachricht mit rund 4000 Zeichen gesendet, die gestört ankam."
+   ],
+   [
+    "G",
+    "Der Bediener schickte sie deshalb ein zweites Mal, und zwar mit denselben Radstellungen, also mit demselben Schlüsselstrom. Das verstieß gegen die Vorschriften."
+   ],
+   [
+    "A",
+    "Außerdem kürzte er beim zweiten Mal einige Wörter ab. Die beiden Texte waren also nicht exakt gleich."
+   ],
+   [
+    "G",
+    "Warum fiel das den Briten überhaupt auf? Bis Oktober 1942 wurde die Startstellung als 12 unverschlüsselte Buchstaben mitgesendet, und beide Sendungen hatten dieselben 12 Buchstaben."
+   ],
+   [
+    "A",
+    "Hier seht ihr die ersten 30 Zeichen beider Sendungen. Die ersten sieben sind gleich, danach laufen die Texte wegen der Abkürzungen auseinander."
+   ],
+   [
+    "G",
+    "So etwas nennt man eine Depth: zwei fast gleiche Klartexte, verschlüsselt mit demselben Schlüssel. John Tiltman brauchte 10 Tage, um die beiden Texte von Hand zu trennen. Danach hatte er rund 4000 Zeichen Schlüsselstrom."
+   ],
+   [
+    "A",
+    "Aus diesem Schlüsselstrom leitete Bill Tutte im Januar 1942 allein die Struktur der Maschine ab, ohne jemals eine gesehen zu haben. Unsere Quelle spricht hier selbst von Reverse Engineering."
+   ]
+  ]
+ },
+ {
+  "slide": 14,
+  "title": "4.2 Lorenz: Warum sich der Schlüssel aufhebt",
+  "lines": [
+   [
+    "A",
+    "Warum ist eine Depth so gefährlich? Das liegt an XOR."
+   ],
+   [
+    "G",
+    "P steht für den Klartext, K für den Schlüssel und C für den Geheimtext. Sendung 1 ist C1 gleich P1 XOR K, Sendung 2 ist C2 gleich P2 XOR K."
+   ],
+   [
+    "A",
+    "Verknüpft man die beiden Geheimtexte per XOR, steht K zweimal in der Rechnung. K XOR K ergibt 0, der Schlüssel fällt also komplett heraus."
+   ],
+   [
+    "G",
+    "Übrig bleibt P1 XOR P2, also nur noch die beiden Klartexte miteinander verknüpft. Damit ist die Verschlüsselung ausgehebelt."
+   ],
+   [
+    "A",
+    "Wie trennt man die beiden Texte? Tiltman hat geraten. Er setzte ein wahrscheinliches Wort an einer Stelle ein und prüfte, was im anderen Text herauskam."
+   ],
+   [
+    "G",
+    "Ein Beispiel aus unserer Quelle: Das Wort geheim an den Stellen 83 bis 88 ergibt im anderen Text eratta. Das passt zu Militärattaché."
+   ],
+   [
+    "A",
+    "So arbeitete er sich Stück für Stück vor. Sobald ein Klartext bekannt ist, liefert P XOR C direkt den Schlüsselstrom."
+   ]
+  ]
+ },
+ {
+  "slide": 15,
+  "title": "4.2 Lorenz: Die Schwäche der ψ-Räder",
+  "lines": [
+   [
+    "G",
+    "Die Depth war allerdings ein Einzelfall. Um Lorenz regelmäßig zu knacken, brauchte man eine Schwäche in der Maschine selbst, und die lag ausgerechnet bei den Psi-Rädern."
+   ],
+   [
+    "A",
+    "Oben seht ihr ein Stück Chi-Strom und ein Stück Psi-Strom. Im Chi-Strom ändert sich das Zeichen bei jedem Schritt. Im Psi-Strom wiederholen sich dagegen Zeichen: zweimal G, dreimal Z, zweimal D."
+   ],
+   [
+    "G",
+    "Das liegt daran, dass die Psi-Räder oft stillstehen und so lange immer dasselbe Zeichen liefern. Der Schlüsselstrom ist also nicht wirklich zufällig, sondern hat eine statistische Verzerrung, einen sogenannten Bias."
+   ],
+   [
+    "A",
+    "Im November 1942 fand Bill Tutte einen Weg, das auszunutzen. Man vergleicht den Geheimtext mit dem Strom der ersten zwei Chi-Räder und zählt die Übereinstimmungen."
+   ],
+   [
+    "G",
+    "Bei einer falschen Startstellung kommt man auf etwa 50 Prozent. Das wäre der Erwartungswert bei reinem Zufall. Diese Zahl haben wir selbst ergänzt."
+   ],
+   [
+    "A",
+    "Bei der richtigen Startstellung sind es rund 55 Prozent. Laut unserer Quelle tragen dazu auch Regelmäßigkeiten im Klartext bei. Der Unterschied ist klein, aber je mehr Zeichen man zählt, desto deutlicher wird er."
+   ],
+   [
+    "G",
+    "Das Problem war der Rechenaufwand: Man musste sehr viele Stellungen prüfen, und jede über eine lange Nachricht. Von Hand hätte das nach einer Schätzung von Max Newman für eine einzige lange Nachricht mehrere hundert Jahre gedauert."
+   ],
+   [
+    "A",
+    "Ironischerweise sollte die unregelmäßige Psi-Bewegung Lorenz sicherer machen. Am Ende wurde genau sie zur entscheidenden Schwäche."
+   ]
+  ]
+ },
+ {
+  "slide": 16,
+  "title": "Logischer vs. statistischer Angriff",
+  "lines": [
+   [
+    "A",
+    "Damit kommen wir zum Kern unseres Vergleichs."
+   ],
+   [
+    "G",
+    "Der Angriff auf die Enigma ist logisch. Er beginnt mit einem Crib, also bekanntem Klartext. Die Prüfregel lautet: Die Verdrahtung muss zu allen Buchstabenpaaren passen."
+   ],
+   [
+    "A",
+    "Eine einzige Prüfung reicht, denn ein Widerspruch schließt eine Walzenstellung sicher aus. Am Ende bleiben nur wenige Stellungen übrig. Das Werkzeug dafür ist die Bombe, elektromechanisch und mit Relais."
+   ],
+   [
+    "G",
+    "Der Angriff auf Lorenz ist statistisch. Er braucht nur den Geheimtext und keine Depth. In der Kryptologie nennt man das einen Ciphertext-only-Angriff."
+   ],
+   [
+    "A",
+    "Die Prüfregel lautet: Bei der richtigen Chi-Stellung stimmen rund 55 statt 50 Prozent überein. Ein einzelnes Zeichen beweist dabei nichts, erst die Zählung über viele Zeichen."
+   ],
+   [
+    "G",
+    "Am Ende wählt man die Stellung mit dem auffälligsten Zählwert. Das Werkzeug dafür ist Colossus, elektronisch und mit Röhren."
+   ],
+   [
+    "A",
+    "Kurz gesagt: Bei der Enigma kann man ausschließen, bei Lorenz muss man zählen. Und für das Zählen über so viele Zeichen braucht man Elektronik."
+   ]
+  ]
+ },
+ {
+  "slide": 17,
+  "title": "Colossus: Statistik in Elektronik",
+  "lines": [
+   [
+    "G",
+    "Genau diese Zählarbeit übernahm Colossus. Auf dem Foto seht ihr Colossus Mark 2 mit einer Bedienerin. Idee und Bau stammen von Tommy Flowers von der Forschungsstelle der britischen Post."
+   ],
+   [
+    "A",
+    "Colossus las den Geheimtext von einem Lochstreifen ein. Den Chi-Strom las er nicht ein, sondern erzeugte ihn selbst elektronisch. Anschließend verglich er beide Ströme und zählte die Übereinstimmungen."
+   ],
+   [
+    "G",
+    "Mark 1 hatte etwa 1600 Röhren und verarbeitete 5000 Zeichen pro Sekunde. Mark 2 hatte etwa 2400 Röhren, verarbeitete fünf Ströme parallel und kam so auf 25.000 Zeichen pro Sekunde."
+   ],
+   [
+    "A",
+    "Der erste Einsatz war am 5. Februar 1944, bei Kriegsende gab es 10 Geräte. Wichtig ist: Colossus gab keinen Klartext aus, sondern nur Zählwerte für Radstellungen. Bis Kriegsende wurden so 63 Millionen Zeichen entschlüsselt."
+   ]
+  ]
+ },
+ {
+  "slide": 18,
+  "title": "Antwort auf die Leitfrage",
+  "lines": [
+   [
+    "G",
+    "Damit zurück zu unserer Leitfrage: Wie prägt die Konstruktion einer Maschine die Möglichkeiten ihrer Kryptanalyse? Was jetzt folgt, ist unsere eigene Schlussfolgerung."
+   ],
+   [
+    "A",
+    "Bei der Enigma erzeugt die Umkehrwalze eine feste Regel: Kein Buchstabe wird zu sich selbst. Eine feste Regel lässt sich prüfen, und jeder Verstoß ist sofort sichtbar. Daraus folgt ein logischer Ausschluss, und dafür reichte eine elektromechanische Maschine wie die Bombe."
+   ],
+   [
+    "G",
+    "Bei Lorenz erzeugen XOR und die Psi-Bewegung keine feste Regel, sondern nur eine kleine Verzerrung: 55 statt 50 Prozent. Sie zeigt sich erst nach sehr vielen Zeichen. Daraus folgt ein statistischer Angriff, und dafür brauchte man die Geschwindigkeit von Colossus."
+   ],
+   [
+    "A",
+    "Unsere Antwort lautet also: Die Konstruktion entscheidet, ob ein Angriff ausschließen kann oder zählen muss."
+   ],
+   [
+    "G",
+    "Eine Einschränkung gehört allerdings dazu: Den Einstieg lieferten in beiden Fällen Menschen. Bei der Enigma waren es vorhersagbare Texte, bei Lorenz eine wiederholte Sendung. Auch die beste Mathematik hilft nichts, wenn bei der Bedienung Fehler passieren."
+   ]
+  ]
+ },
+ {
+  "slide": 19,
+  "title": "Diskussion",
+  "lines": [
+   [
+    "A",
+    "Zum Schluss haben wir eine Frage an euch: Was macht ein Verfahren eher sicher, Komplexität oder mathematische Struktur?"
+   ],
+   [
+    "G",
+    "Die Enigma setzte auf Komplexität, also auf viele bewegliche Teile wie Walzenlage, Ringstellung und Steckerverbindungen. Gebrochen wurde sie über eine feste Regel ihrer Umkehrwalze."
+   ],
+   [
+    "A",
+    "Lorenz setzte auf ein mathematisches Prinzip, die XOR-Verknüpfung mit einem Schlüsselstrom. Gebrochen wurde die Maschine über einen Bedienfehler und die Regelmäßigkeit der Psi-Räder."
+   ],
+   [
+    "G",
+    "Und noch ein Denkanstoß: Bill Tutte hat die Lorenz-Maschine rekonstruiert, ohne sie je gesehen zu haben. Muss ein Verfahren also auch dann sicher sein, wenn der Gegner genau weiß, wie es funktioniert? Was meint ihr?"
+   ],
+   [
+    "A",
+    "Vielen Dank fürs Zuhören. Unsere Quellen und Bildnachweise findet ihr auf den letzten beiden Folien."
+   ]
+  ]
+ }
 ];
 
 const names = { G: "Geronimo", A: "Angelo" };
@@ -349,52 +784,59 @@ function save(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
-const steps = cards.flatMap((card, cardIndex) =>
-  card.lines.map((line, lineIndex) => ({ card, cardIndex, line, lineIndex }))
+const steps = cards.flatMap((card) =>
+  card.lines.map((line, lineIndex) => ({ card, line, lineIndex }))
 );
-let index = Math.min(Math.max(load("step", 0), 0), steps.length - 1);
+const firstStepOfSlide = new Map();
+steps.forEach((step, i) => {
+  if (!firstStepOfSlide.has(step.card.slide)) firstStepOfSlide.set(step.card.slide, i);
+});
+
+let index = Math.min(Math.max(Number(load("step2", 0)) || 0, 0), steps.length - 1);
 let size = load("textSize", window.innerWidth <= 600 ? 28 : 40);
 
-function paragraph([who, raw]) {
-  const p = document.createElement("p");
-  p.className = "line";
-  p.style.setProperty("--who", colors[who]);
-  const name = document.createElement("span");
-  name.className = "who";
-  name.textContent = names[who];
-  p.append(name);
-  p.append(raw);
-  return p;
+for (const card of cards) {
+  const option = document.createElement("option");
+  option.value = String(card.slide);
+  option.textContent = `Folie ${card.slide}: ${card.title}`;
+  el("jump").append(option);
 }
 
 function render() {
   const { card, line, lineIndex } = steps[index];
-  const who = line[0];
+  const [who, text] = line;
   document.documentElement.style.setProperty("--accent", colors[who]);
-  el("card").style.setProperty("--accent", colors[who]);
   el("speaker").textContent = names[who];
-  el("position").textContent = `Folie ${card.slide} von ${cards.length}, Teil ${lineIndex + 1} von ${card.lines.length}`;
+  el("position").textContent = `Folie ${card.slide} von ${cards.length}`;
+  el("bar").style.width = `${((index + 1) / steps.length) * 100}%`;
+
+  const newSlide = lineIndex === 0 && index > 0;
+  el("slideCue").hidden = !newSlide;
+  el("slideCue").textContent = newSlide ? `Neue Folie: jetzt Folie ${card.slide} zeigen` : "";
+
   el("title").textContent = card.title;
-  el("text").replaceChildren(paragraph(line));
+  const p = document.createElement("p");
+  p.textContent = text;
+  el("text").replaceChildren(p);
   el("text").scrollTop = 0;
 
   const following = steps[index + 1];
   if (!following) {
-    el("next").textContent = "Ende";
+    el("next").textContent = "Ende der Präsentation";
   } else if (following.card === card) {
-    el("next").textContent = `Als Nächstes: ${names[following.line[0]]}`;
+    el("next").textContent = `Danach spricht ${names[following.line[0]]}`;
   } else {
-    el("next").textContent = `Als Nächstes: Folie ${following.card.slide} weiterklicken, ${following.card.title} (${names[following.line[0]]})`;
+    el("next").textContent = `Danach: Folie ${following.card.slide} zeigen, ${names[following.line[0]]} spricht`;
   }
 
+  el("jump").value = String(card.slide);
   el("prev").disabled = index === 0;
   el("nextBtn").disabled = index === steps.length - 1;
-  save("step", index);
+  save("step2", index);
 }
 
-function go(step) {
-  const target = index + step;
-  if (target < 0 || target >= steps.length) return;
+function goTo(target) {
+  if (target < 0 || target >= steps.length || target === index) return;
   index = target;
   render();
 }
@@ -405,13 +847,41 @@ function setSize(value) {
   save("textSize", size);
 }
 
+const canFullscreen = Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+el("fullscreen").hidden = !canFullscreen;
+function toggleFullscreen() {
+  if (!canFullscreen) return;
+  const request = document.fullscreenElement
+    ? document.exitFullscreen()
+    : document.documentElement.requestFullscreen();
+  request.catch(() => {});
+}
+
+let wakeLock = null;
+async function keepScreenOn() {
+  if (!("wakeLock" in navigator) || wakeLock || document.visibilityState !== "visible") return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch {}
+}
+document.addEventListener("visibilitychange", keepScreenOn);
+
 document.addEventListener("keydown", (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.target.tagName === "SELECT") return;
+  keepScreenOn();
   switch (event.key) {
-    case "Enter": case " ": case "ArrowRight": case "PageDown":
-      event.preventDefault(); go(1); break;
-    case "ArrowLeft": case "Backspace": case "PageUp":
-      event.preventDefault(); go(-1); break;
+    case "Enter": case " ": case "ArrowRight": case "ArrowDown": case "PageDown":
+      event.preventDefault(); goTo(index + 1); break;
+    case "ArrowLeft": case "ArrowUp": case "Backspace": case "PageUp":
+      event.preventDefault(); goTo(index - 1); break;
+    case "Home":
+      event.preventDefault(); goTo(0); break;
+    case "End":
+      event.preventDefault(); goTo(steps.length - 1); break;
+    case "f": case "F":
+      toggleFullscreen(); break;
     case "+": case "=":
       setSize(size + 2); break;
     case "-":
@@ -419,16 +889,33 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+el("card").addEventListener("click", (event) => {
+  keepScreenOn();
+  const box = el("card").getBoundingClientRect();
+  goTo(event.clientX - box.left < box.width / 3 ? index - 1 : index + 1);
+});
+
 function onClick(id, action) {
-  el(id).addEventListener("click", (event) => { action(); event.currentTarget.blur(); });
+  el(id).addEventListener("click", (event) => {
+    keepScreenOn();
+    action();
+    event.currentTarget.blur();
+  });
 }
-onClick("prev", () => go(-1));
-onClick("nextBtn", () => go(1));
+onClick("prev", () => goTo(index - 1));
+onClick("nextBtn", () => goTo(index + 1));
 onClick("bigger", () => setSize(size + 2));
 onClick("smaller", () => setSize(size - 2));
+onClick("fullscreen", toggleFullscreen);
+
+el("jump").addEventListener("change", (event) => {
+  goTo(firstStepOfSlide.get(Number(event.target.value)));
+  event.target.blur();
+});
 
 setSize(size);
 render();
+keepScreenOn();
 </script>
 </body>
 </html>
